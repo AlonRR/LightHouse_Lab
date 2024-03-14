@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "System/system.h"
 #include "System/delay.h"
@@ -14,76 +15,58 @@
 #include "oledDriver/oledC_colors.h"
 #include "oledDriver/oledC_shapes.h"
 
-void User_Initialize(void) {
-    //Configure A/D Control Registers (ANSB & AD1CONx SFRs)
+void timer_1_init()
+{
+    // Timer1 control register
+    T1CON = 0;
+    T1CONbits.TON = 1;
+    T1CONbits.TSIDL = 1;
+    T1CONbits.TGATE = 0;
+    T1CONbits.TCKPS = 0b10; // 1:64 prescaler
+    T1CONbits.TCS = 0;
 
-    AD1CON1 = 0;
-    AD1CON2 = 0;
-    int ADCS = 0xff;
-    int SAMC = 0x10;
-    int ADRC = 0;
-    AD1CON3 = (ADRC << 15) | (SAMC << 8) | ADCS;
+    // Timer1 interrupt settings and period
+    TMR1 = 0;
+    PR1 = 0xF424;      // timer period value
+    IFS0bits.T1IF = 0; // Clear Timer1 interrupt flag
+    IEC0bits.T1IE = 1; // Enable Timer1 interrupt
+}
 
-    //Initialize LED/Switch IO Direction (TRISx)
-    TRISA |= (1 << 11);
-    TRISA |= (1 << 12);
-    TRISA &= ~(1 << 8);
-    TRISA &= ~(1 << 9);
-    //Set RB12 (AN8) as Analog Input
-    TRISB |= (1 << 12);
-    ANSB = 1 << 11;
-    AD1CHS = 1 << 10;
+void __attribute__((__interrupt__)) _T1Interrupt(void)
+{
+    static bool on = false;
+    if (!on)
+    {
+        oledC_sendCommand(OLEDC_CMD_SET_DISPLAY_MODE_INVERSE, NULL, 0);
+        on = true;
+    }
+    else
+    {
+        oledC_sendCommand(OLEDC_CMD_SET_DISPLAY_MODE_ON, NULL, 0);
+        on = false;
+    }
+    IFS0bits.T1IF = 0;
+}
 
-    //Initialize A/D Circuit (AD1CON1)
-
-
-    //Configure S1/S2 and LED1/LED2 IO directions (TRISA)
+void User_Initialize(void)
+{
+    timer_1_init();
+    oledC_setBackground(OLEDC_COLOR_WHITE);
+    oledC_clearScreen();
 }
 
 /*
-                         Main application
+                Main application
  */
-int main(void) {
-
+int main(void)
+{
     // initialize the system
     SYSTEM_Initialize();
     User_Initialize();
 
-    oledC_setBackground(OLEDC_COLOR_BLUE);
-    oledC_clearScreen();
-    int count = 0, pot;
-    int flag = 0;
-
-    //Set OLED Background color and Clear the display
-
-    //Main loop
-    while (1) {
-        if (((PORTA & (1 << 11)) == 0)) {
-            LATA |= (1 << 8);
-            flag = 1;
-        } else if (flag == 1) {
-            count++;
-            flag = 0;
-            LATA &= ~(1 << 8);
-        }
-        if (((PORTA & (1 << 12)) == 0)) {
-            LATA |= (1 << 9);
-        } else {
-            LATA &= ~(1 << 9);
-        }
-        //Select AN8 for A/D conversion
-        AD1CHS = (1 << 4);
-        //Perform A/D Conversion
-        AD1CON1 |= (1 << 15); // A/D Converter turned on
-        AD1CON1 |= (1 << 1); // sample 
-        for (int i = 0; i < 1000; i++);
-        AD1CON1 &= ~(1 << 1); // stop sampling
-        while ((AD1CON1 & 1) == 0);
-        
-        
-        //Put Result in variable pot
-        pot = ADC1BUF0;
-    }
+    // Main loop
+    while (1)
+        ;
     return 1;
 }
 /**
